@@ -335,13 +335,15 @@ var Schema = EO.Schema.extend({
     };
     return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
   },
+
   pluralize: function(word){
     // information is irregular
-    return (word==="information")?"information":word+"s";
+    return word === 'information' ? 'information' : word + 's';
   },
+
   singularize: function(word){
     // information is irregular
-    return (word==="information")?"information":word.substr(0, word.length - 1);
+    return word === 'information' ? 'information' : word.substr(0, word.length - 1);
   }
 });
 ```
