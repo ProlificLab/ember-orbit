@@ -1,13 +1,13 @@
 import Orbit from 'orbit';
 import OCLocalStorageSource from 'orbit-common/local-storage-source';
 import { RecordNotFoundException, RecordAlreadyExistsException } from 'orbit-common/lib/exceptions';
-import attr from 'ember-orbit/attr';
+import attr from 'ember-orbit/fields/attr';
+import hasOne from 'ember-orbit/fields/has-one';
+import hasMany from 'ember-orbit/fields/has-many';
 import Store from 'ember-orbit/store';
 import Model from 'ember-orbit/model';
 import Schema from 'ember-orbit/schema';
-import hasOne from 'ember-orbit/relationships/has-one';
-import hasMany from 'ember-orbit/relationships/has-many';
-import { createStore } from 'test-helper';
+import { createStore } from 'tests/test-helper';
 
 var get = Ember.get,
     set = Ember.set;
@@ -100,7 +100,8 @@ test("it creates a schema if none has been specified", function() {
 test("#add will add a new instance of a model", function() {
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
-      ok(get(planet, 'clientid'), 'assigned clientid');
+      ok(planet instanceof Planet);
+      ok(get(planet, 'primaryId'), 'assigned primaryId');
       equal(get(planet, 'name'), 'Earth');
     });
   });
@@ -109,7 +110,7 @@ test("#add will add a new instance of a model", function() {
 test("#find will asynchronously return a record when called with a `type` and a single `id`", function() {
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
-      store.find('planet', get(planet, 'clientid')).then(function(foundPlanet) {
+      store.find('planet', get(planet, 'primaryId')).then(function(foundPlanet) {
         strictEqual(foundPlanet, planet);
       });
     });
@@ -137,12 +138,12 @@ test("#find will asynchronously return an array of records when called with a `t
 
     store.add('planet', {name: 'Earth'}).then(function(planet) {
       planets.push(planet);
-      ids.push(get(planet, 'clientid'));
+      ids.push(get(planet, 'primaryId'));
       return store.add('planet', {name: 'Jupiter'});
 
     }).then(function(planet) {
       planets.push(planet);
-      ids.push(get(planet, 'clientid'));
+      ids.push(get(planet, 'primaryId'));
 
     }).then(function() {
       store.find('planet', ids).then(function(foundPlanets) {
@@ -165,12 +166,12 @@ test("#find will asynchronously return an array of all records when called with 
 
     store.add('planet', {name: 'Earth'}).then(function(planet) {
       planets.push(planet);
-      ids.push(get(planet, 'clientid'));
+      ids.push(get(planet, 'primaryId'));
       return store.add('planet', {name: 'Jupiter'});
 
     }).then(function(planet) {
       planets.push(planet);
-      ids.push(get(planet, 'clientid'));
+      ids.push(get(planet, 'primaryId'));
 
     }).then(function() {
       store.find('planet').then(function(foundPlanets) {
@@ -193,12 +194,12 @@ test("#find will asynchronously return an array of records when called with a `t
 
     store.add('planet', {name: 'Earth'}).then(function(planet) {
       planets.push(planet);
-      ids.push(get(planet, 'clientid'));
+      ids.push(get(planet, 'primaryId'));
       return store.add('planet', {name: 'Jupiter'});
 
     }).then(function(planet) {
       planets.push(planet);
-      ids.push(get(planet, 'clientid'));
+      ids.push(get(planet, 'primaryId'));
 
     }).then(function() {
       store.find('planet', {name: 'Jupiter'}).then(function(foundPlanets) {
@@ -215,7 +216,7 @@ test("#remove will asynchronously remove a record when called with a `type` and 
 
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
-      var id = get(planet, 'clientid');
+      var id = get(planet, 'primaryId');
 
       strictEqual(store.retrieve('planet', id), planet);
 
@@ -231,7 +232,7 @@ test("#remove will asynchronously remove a record when called with a single mode
 
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
-      var id = get(planet, 'clientid');
+      var id = get(planet, 'primaryId');
       strictEqual(store.retrieve('planet', id), planet);
 
       planet.remove().then(function() {
@@ -241,10 +242,28 @@ test("#remove will asynchronously remove a record when called with a single mode
   });
 });
 
+test("#remove operation on source will trigger Model didUnload event", function() {
+  expect(1);
+
+  Ember.run(function() {
+    store.add('planet', {name: 'Earth'})
+      .then(function(planet) {
+        var id = get(planet, 'primaryId');
+
+        planet.on('didUnload', function() {
+          ok(true, 'didUnload fired');
+        });
+
+        store.orbitSource.remove('planet', id);
+      });
+  });
+});
+
+
 test("#retrieve can synchronously retrieve a record by id", function() {
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
-      var planet2 = store.retrieve('planet', get(planet, 'clientid'));
+      var planet2 = store.retrieve('planet', get(planet, 'primaryId'));
       strictEqual(planet2, planet);
     });
   });

@@ -43,7 +43,7 @@ Ember-Orbit.
 Orbit and Ember-Orbit can be installed with [Bower](http://bower.io):
 
 ```
-bower install orbit
+bower install orbit.js
 bower install ember-orbit
 ```
 
@@ -57,7 +57,7 @@ maintained for Ember-Orbit's Bower releases.
 
 For an Ember CLI application, see the instructions further below.
 
-If you just want to use the global (non-AMD) builds of Orbit and 
+If you just want to use the global (non-AMD) builds of Orbit and
 Ember-Orbit, include the following scripts on your page:
 
 ```
@@ -153,9 +153,43 @@ your application.
 
 Model definitions can use the following helpers:
 
+* `key()` - keys
 * `attr()` - attributes
 * `hasOne()` - has-one relationships
 * `hasMany()` - has-many relationships
+
+#### Keys
+
+Keys uniquely identify a record of a particular model type.
+
+Every model must define a single "primary key", which will be used throughout
+Orbit to identify records of that type uniquely. This should be indicated with
+the field option `primaryKey: true`.
+
+If no primary key is defined on a model, a single primary key named `id` will be
+automatically generated. This key's `defaultValue` will be set to the v4 UUID
+generator used within Orbit.
+
+When working with remote servers that do not support UUID primary keys, it's
+necessary to correlate Orbit IDs with IDs that are generated remotely. In order
+to support this scenario, one or more "secondary keys" may also be defined for
+a model.
+
+Let's say that you want to track Orbit's primary key locally as a UUID named
+`cid` and also define a remote key named `id`. You could define the following
+keys in all models by modifying the base `Model` class:
+
+```javascript
+  Model.reopen({
+    cid: key({primaryKey: true, defaultValue: uuid}),
+    id:  key()
+  });
+```
+
+Note that Orbit can maintain different keys across different models, even in the
+same schema.
+
+#### Relationships
 
 A relationship can optionally declare an `inverse`, which should point to a key
 on the related model. Orbit will ensure that relationships and their inverses
@@ -181,6 +215,8 @@ Here's an example set of model definitions:
     moons: hasMany('moon', {inverse: 'planet'})
   });
 ```
+
+### Accessing and Modifying Records
 
 Records can access properties and relationships through `get` and `set`.
 Relationships are stored in proxy objects which will be kept in sync with
@@ -211,15 +247,16 @@ asynchronous methods, all of which return a promise:
 Note that working with a model synchronously via `get` and `set` is generally
 more convenient than calling the above async methods.
 
-A model's relationships can be re-queried by calling `find()` on a relationship
-object. This triggers the associated `findLink` call and returns its promise.
-Related records will be updated through transformations to the underlying
-source. Any changes should be reflected by the time the promise resolves.
+A model's relationships can be re-queried by calling `reload()` on a
+relationship object. This triggers the associated `findLink` call and returns
+its promise. Related records will be updated through transformations to the
+underlying source. Any changes should be reflected by the time the promise
+resolves.
 
 For example:
 
 ```javascript
-planet.get('moons').find().then(function() {
+planet.get('moons').reload().then(function() {
   console.log(planet.get('moons.length'));
 });
 ```
@@ -240,19 +277,20 @@ servers.
 First, remove `ember-data`, which is configured by default:
 
 ```
-npm rm ember-cli-ember-data --save-dev
+npm rm ember-data --save-dev
+bower uninstall --save ember-data
 ```
 
 Next, add `orbit.js` and `ember-orbit` as dependencies in `bower.json` and
-install them.
+install them by running this command.
 
 ```
-bower install
+bower install --save orbit.js ember-orbit
 ```
 
-In your `Brocfile`, import dependencies for Orbit and Ember-Orbit. It's 
-recommended that you import the named AMD ('.amd.js') files so that modules 
-may be used within ember-cli. 
+In your `Brocfile`, import dependencies for Orbit and Ember-Orbit. It's
+recommended that you import the named AMD ('.amd.js') files so that modules
+may be used within ember-cli.
 
 For example:
 
@@ -262,26 +300,26 @@ var EmberApp = require('ember-cli/lib/broccoli/ember-app');
 var app = new EmberApp();
 
 // Required Orbit imports
-app.import('vendor/orbit.js/orbit.amd.js', {
+app.import('bower_components/orbit.js/orbit.amd.js', {
   exports: {'orbit': ['default']}
 });
-app.import('vendor/orbit.js/orbit-common.amd.js', {
+app.import('bower_components/orbit.js/orbit-common.amd.js', {
   exports: {'orbit-common': ['default']}
 });
 
 // Optional import of local storage source
-app.import('vendor/orbit.js/orbit-common-local-storage.amd.js', {
+app.import('bower_components/orbit.js/orbit-common-local-storage.amd.js', {
   exports: {'orbit-common/local-storage-source': ['default']}
 });
 
 // Optional import of JSON API source and serializer
-app.import('vendor/orbit.js/orbit-common-jsonapi.amd.js', {
+app.import('bower_components/orbit.js/orbit-common-jsonapi.amd.js', {
   exports: {'orbit-common/jsonapi-source': ['default'],
             'orbit-common/jsonapi-serializer': ['default']}
 });
 
 // Required Ember-Orbit import
-app.import('vendor/ember-orbit/ember-orbit.amd.js', {
+app.import('bower_components/ember-orbit/ember-orbit.amd.js', {
   exports: {'ember-orbit': ['default']}
 });
 
@@ -291,51 +329,43 @@ module.exports = app.toTree();
 Create an initializer for Ember-Orbit within your application's `initializers`
 directory.
 
-The following example creates a store backed by local storage: 
+The following example creates a store backed by local storage:
 
 ```javascript
 import Ember from 'ember';
 import Orbit from 'orbit';
 import LocalStorageSource from 'orbit-common/local-storage-source';
 import EO from 'ember-orbit';
+import config from '../config/environment';
 
 var LocalStorageStore = EO.Store.extend({
   orbitSourceClass: LocalStorageSource,
   orbitSourceOptions: {
-    namespace: "my-app" // n.s. for localStorage
+    namespace: config.modulePrefix // n.s. for localStorage
   }
 });
 
+export var initialize = function(container, application) {
+  Orbit.Promise = Ember.RSVP.Promise;
+  application.register('schema:main', EO.Schema);
+  application.register('store:main', LocalStorageStore);
+  application.inject('controller', 'store', 'store:main');
+  application.inject('route', 'store', 'store:main');
+};
+
 export default {
-  name: 'injectStore',
-  initialize: function(container, application) {
-    Orbit.Promise = Ember.RSVP.Promise;
-    application.register('schema:main', EO.Schema);
-    application.register('store:main', LocalStorageStore);
-    application.inject('controller', 'store', 'store:main');
-    application.inject('route', 'store', 'store:main');
-  }
+  name: 'inject-store',
+
+  initialize: initialize
 };
 ```
 
 ### Customizing schema
 
-You can customize functions used in Ember Orbit Schema to generate id or pluralize/singularize schema names.
+You can customize functions used to pluralize/singularize model and field names:
+
 ```javascript
 var Schema = EO.Schema.extend({
-  idField: 'id',
-  remoteIdField: 'id',
-  
-  generateId: function() {
-    // return a UUID
-    var s4 = function () {
-      return Math.floor((1 + Math.random()) * 0x10000)
-                 .toString(16)
-                 .substring(1);
-    };
-    return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
-  },
-
   pluralize: function(word){
     // information is irregular
     return word === 'information' ? 'information' : word + 's';
@@ -348,49 +378,84 @@ var Schema = EO.Schema.extend({
 });
 ```
 
+Customization of ID fields and generators should be done on individual models.
+
 ### Example Ember-Orbit / Ember-CLI Application
 
-In addition to this documentation, you may find it helpful to see an example 
+In addition to this documentation, you may find it helpful to see an example
 application that works works with Ember-Orbit and Ember-CLI:
 
 https://github.com/opsb/ember-orbit-todos
 
+## Contributing
 
-## Building and Testing Ember-Orbit
+### Installing Ember-Orbit
 
-The Ember-Orbit project is managed by [Grunt](http://gruntjs.com/). Once you've
-installed Grunt and its dependencies, you can install Ember-Orbit's development
-dependencies from inside the project root with:
+Install the CLI for [Broccoli](https://github.com/broccolijs/broccoli) globally:
+
+```
+npm install -g broccoli-cli
+```
+
+Install the rest of ember-orbit's dependencies:
 
 ```
 npm install
 ```
 
-Distributable versions of Orbit can be built to the `/dist` directory by running:
+### Building Ember-Orbit
+
+Distributable versions of ember-orbit can be built to the `/build` directory
+by running:
 
 ```
-grunt package
+npm run build
 ```
 
-Orbit can be tested by running:
+### Testing Ember-Orbit
+
+#### CI Testing
+
+ember-orbit can be tested in CI mode by running:
 
 ```
-grunt test:ci
+npm test
 ```
 
-Or from within a browser
-(at [http://localhost:8010/test/](http://localhost:8010/test/)) by running:
+Or directly with testem (useful for configuring options):
 
 ```
-grunt server
+testem ci
 ```
 
-Ember-Orbit's docs can be generated to the `/docs` directory by running:
+#### Browser Testing
+
+ember-orbit can be tested within a browser
+(at [http://localhost:4200/tests/](http://localhost:4200/tests/)) by running:
 
 ```
-grunt docs
+npm start
 ```
 
+Or directly with `broccoli` (useful for configuring the port, etc.):
+
+```
+broccoli serve
+```
+
+### Generating Documentation
+
+Install [yuidoc](http://yui.github.io/yuidoc/) globally:
+
+```
+npm install -g yuidocjs
+```
+
+Generate docs in the `/docs` directory:
+
+```
+yuidoc .
+```
 
 ## Acknowledgments
 

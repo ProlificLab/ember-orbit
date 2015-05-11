@@ -1,10 +1,10 @@
 import Orbit from 'orbit';
-import attr from 'ember-orbit/attr';
-import hasOne from 'ember-orbit/relationships/has-one';
-import hasMany from 'ember-orbit/relationships/has-many';
+import attr from 'ember-orbit/fields/attr';
+import hasOne from 'ember-orbit/fields/has-one';
+import hasMany from 'ember-orbit/fields/has-many';
 import Store from 'ember-orbit/store';
 import Model from 'ember-orbit/model';
-import { createStore } from 'test-helper';
+import { createStore } from 'tests/test-helper';
 import { RecordNotFoundException } from 'orbit-common/lib/exceptions';
 
 var get = Ember.get,
@@ -67,22 +67,28 @@ test("store is properly linked to models", function() {
 });
 
 test("new models can be created and updated", function() {
-  expect(4);
+  expect(7);
 
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
+      ok(get(planet, 'id'), 'id has been defined');
+
+      ok(planet.primaryId, 'primaryId has been defined');
+
+      equal(planet.primaryId, get(planet, 'id'), 'id matches primaryId');
+
       equal(get(planet, 'name'), 'Earth');
 
       set(planet, 'name', 'Jupiter');
 
       equal(get(planet, 'name'), 'Jupiter', 'CP reflects transformed value');
 
-      equal(store.orbitSource.retrieve(['planet', get(planet, 'clientid'), 'name']),
+      equal(store.orbitSource.retrieve(['planet', planet.primaryId, 'name']),
             'Earth',
             'memory source patch is not yet complete');
 
       store.then(function() {
-        equal(store.orbitSource.retrieve(['planet', get(planet, 'clientid'), 'name']),
+        equal(store.orbitSource.retrieve(['planet', planet.primaryId, 'name']),
               'Jupiter',
               'memory source patch is now complete');
       });
@@ -100,8 +106,60 @@ test("new models will be assigned default values for attributes", function(){
   });
 });
 
-test("hasOne relationships can be created and updated", function() {
-  expect(6);
+test("new models can be added with has-one links", function() {
+  expect(4);
+
+  Ember.run(function() {
+    var jupiter,
+        io,
+        europa;
+
+    store.add('planet', {name: 'Jupiter'}).then(function(planet) {
+      jupiter = planet;
+
+    }).then(function() {
+      return store.add('moon', {name: 'Io', planet: jupiter}).then(function(moon) {
+        io = moon;
+      });
+
+    }).then(function() {
+      equal(get(io, 'planet.content'), jupiter, 'Io has been assigned a planet');
+      equal(get(io, 'planet.name'), 'Jupiter', 'Io\'s planet is named Jupiter');
+
+      equal(get(jupiter, 'moons.length'), 1, 'Jupiter now has one moon');
+      equal(get(jupiter, 'moons.firstObject'), io, 'Io has been added to Jupiter\'s moons');
+    });
+  });
+});
+
+test("new models can be added with has-many links", function() {
+  expect(4);
+
+  Ember.run(function() {
+    var jupiter,
+        io,
+        europa;
+
+    store.add('moon', {name: 'Io'}).then(function(moon) {
+      io = moon;
+
+    }).then(function() {
+      return store.add('planet', {name: 'Jupiter', moons: [io]}).then(function(planet) {
+        jupiter = planet;
+      });
+
+    }).then(function() {
+      equal(get(io, 'planet.content'), jupiter, 'Io has been assigned a planet');
+      equal(get(io, 'planet.name'), 'Jupiter', 'Io\'s planet is named Jupiter');
+
+      equal(get(jupiter, 'moons.length'), 1, 'Jupiter now has one moon');
+      equal(get(jupiter, 'moons.firstObject'), io, 'Io has been added to Jupiter\'s moons');
+    });
+  });
+});
+
+test("hasOne relationships can be added, updated and removed", function() {
+  expect(9);
 
   Ember.run(function() {
     var jupiter,
@@ -117,11 +175,6 @@ test("hasOne relationships can be created and updated", function() {
       });
 
     }).then(function() {
-      return store.add('moon', {name: 'Europa'}).then(function (moon) {
-        europa = moon;
-      });
-
-    }).then(function() {
       equal(get(io, 'planet.content'), null, 'Io has not been assigned a planet');
       equal(get(io, 'planet.name'), null, 'Io\'s planet does not yet have a name');
 
@@ -131,72 +184,82 @@ test("hasOne relationships can be created and updated", function() {
       equal(get(io, 'planet.name'), 'Jupiter', 'Io\'s planet is named Jupiter');
 
       // Check internals of source
-      equal(store.orbitSource.retrieve(['moon', get(io, 'clientid'), '__rel', 'planet']),
-            undefined,
-            'memory source patch is not yet complete');
+      equal(store.orbitSource.retrieve(['moon', io.primaryId, '__rel', 'planet']),
+        undefined,
+        'memory source patch is not yet complete');
 
-      store.then(function() {
-        // Check internals of source
-        equal(store.orbitSource.retrieve(['moon', get(io, 'clientid'), '__rel', 'planet']),
-              get(jupiter, 'clientid'),
-              'memory source patch is now complete');
-      });
+      return store.settleTransforms();
+
+    }).then(function() {
+      // Check internals of source
+      equal(store.orbitSource.retrieve(['moon', io.primaryId, '__rel', 'planet']),
+            jupiter.primaryId,
+            'memory source patch is now complete');
+
+      set(io, 'planet', undefined);
+
+      equal(get(io, 'planet.content'), undefined, 'Io has not been assigned a planet');
+      equal(get(io, 'planet.name'), undefined, 'Io\'s planet does not yet have a name');
+
+      return store.settleTransforms();
+
+    }).then(function() {
+      // Check internals of source
+      equal(store.orbitSource.retrieve(['moon', io.primaryId, '__rel', 'planet']),
+            null,
+            'memory source has been reset');
     });
   });
 });
 
-// TODO
-//test("hasOne relationships can trigger a `find` based on the relatedId", function() {
-//  expect(2);
-//
-//  Ember.run(function() {
-//    var jupiter,
-//        io,
-//        europa;
-//
-//    store.add('planet', {id: '123', name: 'Jupiter'}).then(function(planet) {
-//      jupiter = planet;
-//
-//    }).then(function() {
-//      return store.add('moon', {name: 'Io', links: {planet: jupiter}});
-//
-//    }).then(function(moon) {
-//      io = moon;
-//      return get(io, 'planet').find();
-//
-//    }).then(function(planet) {
-//      strictEqual(planet, jupiter, 'planet is looked up correctly');
-//      strictEqual(get(io, 'planet.content'), jupiter, 'planet has been set correctly in object proxy');
-//    });
-//  });
-//});
-//
-//test("hasOne relationships can fail to find a record based on the relatedId", function() {
-//  expect(1);
-//
-//  Ember.run(function() {
-//    var jupiter,
-//        io,
-//        europa;
-//
-//    store.add('planet', {id: '123', name: 'Jupiter'}).then(function(planet) {
-//      jupiter = planet;
-//
-//    }).then(function() {
-//      return store.add('moon', {name: 'Io', links: {planet: {id: 'bogus'}}});
-//
-//    }).then(function(moon) {
-//      io = moon;
-//      return get(io, 'planet').find();
-//
-//    }).then(function(planet) {
-//      ok(false, 'should not be able to find record based on a fake id');
-//
-//    }, function(e) {
-//      ok(e instanceof RecordNotFoundException, 'RecordNotFoundException thrown');
-//    });
-//  });
-//});
+test("hasOne relationships can be reloaded and return a record", function() {
+ expect(2);
+
+ Ember.run(function() {
+   var jupiter,
+       io,
+       europa;
+
+   store.add('planet', {id: '123', name: 'Jupiter'}).then(function(planet) {
+     jupiter = planet;
+
+   }).then(function() {
+     return store.add('moon', {name: 'Io', planet: jupiter});
+
+   }).then(function(moon) {
+     io = moon;
+     return get(io, 'planet').reload();
+
+   }).then(function(planet) {
+     strictEqual(planet, jupiter, 'planet is looked up correctly');
+     strictEqual(get(io, 'planet.content'), jupiter, 'planet has been set correctly in object proxy');
+   });
+ });
+});
+
+test("hasOne relationships can be reloaded and return null", function() {
+ expect(1);
+
+ Ember.run(function() {
+   var jupiter,
+       io,
+       europa;
+
+   store.add('planet', {id: '123', name: 'Jupiter'}).then(function(planet) {
+     jupiter = planet;
+
+   }).then(function() {
+     return store.add('moon', {name: 'Io'});
+
+   }).then(function(moon) {
+     io = moon;
+     return get(io, 'planet').reload();
+
+   }).then(function(planet) {
+     equal(planet, null, 'planet can not be found.');
+   });
+ });
+});
 
 test("hasMany relationships can be created and updated", function() {
   expect(8);
@@ -232,13 +295,13 @@ test("hasMany relationships can be created and updated", function() {
 
       equal(get(io, 'planet.content'), jupiter, 'Io has been assigned a planet');
 
-      equal(store.orbitSource.retrieve(['moon', get(io, 'clientid'), '__rel', 'planet']),
+      equal(store.orbitSource.retrieve(['moon', io.primaryId, '__rel', 'planet']),
             undefined,
             'memory source patch is not yet complete');
 
       store.then(function() {
-        equal(store.orbitSource.retrieve(['moon', get(io, 'clientid'), '__rel', 'planet']),
-              get(jupiter, 'clientid'),
+        equal(store.orbitSource.retrieve(['moon', io.primaryId, '__rel', 'planet']),
+              jupiter.primaryId,
               'memory source patch is now complete');
 
         strictEqual(get(jupiter, 'moons'), moons, 'ManyArray is still the same object');
@@ -337,7 +400,7 @@ test("hasMany relationships are updated when a HasManyArray is updated", functio
 });
 
 test("model properties can be reset through transforms", function() {
-  expect(3);
+  expect(2);
 
   Ember.run(function() {
     store.add('planet', {name: 'Earth'}).then(function(planet) {
@@ -345,13 +408,9 @@ test("model properties can be reset through transforms", function() {
 
       store.transform({
         op: 'replace',
-        path: ['planet', get(planet, 'clientid'), 'name'],
+        path: ['planet', planet.primaryId, 'name'],
         value: 'Jupiter'
-      });
-
-      equal(get(planet, 'name'), 'Earth', 'CP has not been invalidated yet');
-
-      store.then(function() {
+      }).then(function() {
         equal(get(planet, 'name'), 'Jupiter', 'CP reflects transformed value');
       });
     });
