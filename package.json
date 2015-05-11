@@ -25,9 +25,7 @@
   ],
   "main": "Brocfile.js",
   "scripts": {
-    "postinstall": "bower install",
     "build": "rm -rf build && BROCCOLI_ENV=test broccoli build build",
-    "prepublish": "bower install",
     "test": "testem ci",
     "start": "BROCCOLI_ENV=test broccoli serve"
   },
